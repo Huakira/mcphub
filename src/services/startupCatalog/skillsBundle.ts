@@ -26,11 +26,14 @@ const execFileAsync = promisify(execFile);
 
 export interface SkillsBody {
   body: string;
+  /** Root AGENTS.md, rendered ahead of the skill bodies. */
+  agents: string;
   stale: boolean;
 }
 
 interface BundleCache {
   body: string;
+  agents: string;
   commit?: string;
   fetchedAt: number;
 }
@@ -78,13 +81,13 @@ export class SkillsBundleSource {
       this.cache &&
       Date.now() - this.cache.fetchedAt < this.config.ttlMs
     ) {
-      return { body: this.cache.body, stale: false };
+      return { body: this.cache.body, agents: this.cache.agents, stale: false };
     }
     const refreshed = await this.refresh();
     if (!this.cache) {
-      return { body: '', stale: true };
+      return { body: '', agents: '', stale: true };
     }
-    return { body: this.cache.body, stale: !refreshed };
+    return { body: this.cache.body, agents: this.cache.agents, stale: !refreshed };
   }
 
   private describeSource(): string {
@@ -134,6 +137,8 @@ export class SkillsBundleSource {
     if (!preload) {
       throw new Error(`missing ${this.config.preloadPath}`);
     }
+    const agentsPath = this.config.agentsPath ?? 'AGENTS.md';
+    const agents = (await this.readText(agentsPath)) ?? '';
     const names = parseSkillList(preload);
     if (names.length === 0) {
       if (!this.warnedMissingList) {
@@ -142,7 +147,7 @@ export class SkillsBundleSource {
           `No skills found between the preload markers in ${this.config.preloadPath}; the startup bundle will carry the catalog only.`,
         );
       }
-      this.cache = { body: '', commit, fetchedAt: Date.now() };
+      this.cache = { body: '', agents, commit, fetchedAt: Date.now() };
       return;
     }
 
@@ -166,7 +171,7 @@ export class SkillsBundleSource {
             `以上 ${sections.length} 个开场技能已全部加载，直接遵循即可，不要再逐个调用技能工具。`,
           ].join('\n\n') + '\n';
 
-    this.cache = { body, commit, fetchedAt: Date.now() };
+    this.cache = { body, agents, commit, fetchedAt: Date.now() };
     this.persistDiskCache();
   }
 
@@ -291,6 +296,7 @@ export class SkillsBundleSource {
       if (parsed && typeof parsed.body === 'string') {
         this.cache = {
           body: parsed.body,
+          agents: typeof parsed.agents === 'string' ? parsed.agents : '',
           commit: typeof parsed.commit === 'string' ? parsed.commit : undefined,
           fetchedAt: typeof parsed.fetchedAt === 'number' ? parsed.fetchedAt : 0,
         };
