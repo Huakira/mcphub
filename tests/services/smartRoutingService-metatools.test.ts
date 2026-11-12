@@ -111,6 +111,20 @@ describe('buildSmartRoutingMetaTools', () => {
     expect(tools.map((t) => t.name)).toEqual(['search_tools', 'describe_tool', 'call_tool']);
   });
 
+  it('appends extraToolHint only to search_tools and call_tool', () => {
+    const tools = buildSmartRoutingMetaTools(
+      'all available servers',
+      'srv-a',
+      true,
+      undefined,
+      'Prefer the notes group first.',
+    );
+    const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool.description]));
+    expect(byName.search_tools).toContain('Prefer the notes group first.');
+    expect(byName.call_tool).toContain('Prefer the notes group first.');
+    expect(byName.describe_tool).not.toContain('Prefer the notes group first.');
+  });
+
   it('embeds the scope description and server list into search_tools', () => {
     const tools = buildSmartRoutingMetaTools('servers in the "x" group', 'srv-a', false);
     const search = tools.find((t) => t.name === 'search_tools')!;

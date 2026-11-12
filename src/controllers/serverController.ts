@@ -2180,6 +2180,8 @@ export const updateSystemConfig = async (req: Request, res: Response): Promise<v
         typeof smartRouting.azureOpenaiApiVersion === 'string' ||
         typeof smartRouting.azureOpenaiEmbeddingDeployment === 'string' ||
         typeof smartRouting.progressiveDisclosure === 'boolean' ||
+        typeof smartRouting.extraToolHint === 'string' ||
+        Array.isArray(smartRouting.aggregateGroups) ||
         typeof smartRouting.azureOpenaiEmbeddingModel === 'string' ||
         typeof smartRouting.serverDescriptionMode === 'string' ||
         typeof smartRouting.embeddingQueryPrefix === 'string' ||
@@ -2595,6 +2597,19 @@ export const updateSystemConfig = async (req: Request, res: Response): Promise<v
 
       if (typeof smartRouting.progressiveDisclosure === 'boolean') {
         systemConfig.smartRouting.progressiveDisclosure = smartRouting.progressiveDisclosure;
+      }
+      if (typeof smartRouting.extraToolHint === 'string') {
+        systemConfig.smartRouting.extraToolHint = smartRouting.extraToolHint;
+      }
+      if (Array.isArray(smartRouting.aggregateGroups)) {
+        systemConfig.smartRouting.aggregateGroups = [
+          ...new Set(
+            smartRouting.aggregateGroups
+              .filter((name: unknown): name is string => typeof name === 'string')
+              .map((name: string) => name.trim())
+              .filter((name: string) => name.length > 0),
+          ),
+        ];
       }
 
       if (typeof smartRouting.serverDescriptionMode === 'string') {

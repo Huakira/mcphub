@@ -51,6 +51,23 @@ describe('Parameter Conversion Utilities', () => {
       expect(result.flag).toBe(true);
     });
 
+    it('preserves malformed booleans and integers instead of coercing them', () => {
+      const schema = {
+        properties: {
+          flag: { type: 'boolean' },
+          count: { type: 'integer' },
+          zero: { type: 'boolean' },
+        },
+      };
+      const result = convertParametersToTypes(
+        { flag: 'maybe', count: '10abc', zero: '0' },
+        schema,
+      );
+      expect(result.flag).toBe('maybe');
+      expect(result.count).toBe('10abc');
+      expect(result.zero).toBe(false);
+    });
+
     it('should convert comma-separated string to array when schema type is array', () => {
       const params = { tags: 'one,two,three' };
       const schema = {

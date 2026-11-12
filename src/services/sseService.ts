@@ -44,6 +44,7 @@ import { authenticateForwardAuthToken } from './forwardAuthService.js';
 import { getPublicResourceUrl, getResourceMetadataUrl } from '../utils/protectedResource.js';
 import { logger } from '../utils/logger.js';
 import { isReplicaMode } from '../utils/replicaMode.js';
+import { AGGREGATE_SMART_ROUTING_GROUP } from '../utils/aggregateSmartRouting.js';
 
 export interface SessionContext {
   transport: Transport;
@@ -283,11 +284,44 @@ const isBearerKeyAllowedForRequest = async (req: Request, key: BearerKey): Promi
     return true;
   }
 
-  const paramValue = normalizeBearerScopeParam((req.params as any)?.group as string | undefined);
+  const rawGroup = (req.params as any)?.group as string | undefined;
+  const paramValue = normalizeBearerScopeParam(rawGroup);
 
   // accessType 'all' allows all requests
   if (key.accessType === 'all') {
     return true;
+  }
+
+  // One connection for several smart groups. Allow the key when it can use at
+  // least one configured group; the tool list is filtered to those groups.
+  if (rawGroup === AGGREGATE_SMART_ROUTING_GROUP) {
+    // Local patch: use every existing group (see mcpService listAccessibleAggregateGroups).
+    const names = (await getGroupDao().findAll()).map((group) => group.name);
+    if (names.length === 0) {
+      return false;
+    }
+    if (key.accessType === 'exclude') {
+      return true;
+    }
+    const allowedGroups = key.allowedGroups || [];
+    if (names.some((name) => allowedGroups.includes(name))) {
+      return true;
+    }
+    if (key.accessType !== 'servers' && key.accessType !== 'custom') {
+      return false;
+    }
+    const allowedServers = key.allowedServers || [];
+    const groupDao = getGroupDao();
+    for (const name of names) {
+      const matched = await groupDao.findByName(name);
+      const serverNames = (matched?.servers || []).map((server) =>
+        typeof server === 'string' ? server : server.name,
+      );
+      if (serverNames.length > 0 && serverNames.every((server) => allowedServers.includes(server))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // No parameter value means global route. 'exclude' keys may use it; the
