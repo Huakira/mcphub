@@ -91,8 +91,8 @@ const scrubSecret = (text: string, secret: string): string => {
 };
 
 export const createLlmClient = (config: LlmConfig): LlmClient => {
-  const chain = [config.model, config.fallbackModel].filter(
-    (model): model is string => Boolean(model && model.trim()),
+  const chain = [config.model, config.fallbackModel].filter((model): model is string =>
+    Boolean(model && model.trim()),
   );
 
   const requestOnce = async (
@@ -146,7 +146,10 @@ export const createLlmClient = (config: LlmConfig): LlmClient => {
       }
       return { summary, model };
     } catch (error) {
-      if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+      if (
+        error instanceof Error &&
+        (error.name === 'AbortError' || error.name === 'TimeoutError')
+      ) {
         throw new Error('network error or timeout');
       }
       throw error;
@@ -182,7 +185,12 @@ const emptyStore = (): SummaryStore => ({ servers: {}, lastGoodModel: null });
 export const loadSummaryStore = (filePath: string): SummaryStore => {
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<SummaryStore> | null;
-    if (parsed && typeof parsed === 'object' && parsed.servers && typeof parsed.servers === 'object') {
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed.servers &&
+      typeof parsed.servers === 'object'
+    ) {
       return {
         servers: parsed.servers as Record<string, SummaryRecord>,
         lastGoodModel: parsed.lastGoodModel ?? null,

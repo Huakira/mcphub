@@ -1,5 +1,7 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { logger } from '../../utils/logger.js';
 import type { SkillsBundleConfig } from './config.js';
 
@@ -10,30 +12,26 @@ import type { SkillsBundleConfig } from './config.js';
  *   1. skills/preload/SKILL.md  → the skill list between the preload markers
  *   2. skills/<name>/SKILL.md   → each skill body, YAML front matter removed
  *
- * A local mount (SKILLS_BUNDLE_LOCAL_PATH) wins; otherwise the GitHub contents
- * API is used with one conditional request per file, so an unchanged repository
- * costs only 304s. Any failure keeps the last good copy instead of returning
- * nothing.
+ * A local mount (SKILLS_BUNDLE_LOCAL_PATH) wins. Otherwise each request checks
+ * the remote branch with git and fetches only when its commit changed. Files
+ * are read from a bare repository cache with `git show`; no working tree, PAT,
+ * cron or GitHub HTTP API is needed. Failures keep the last good body.
  */
 
 const MARKER_START = '<!-- preload:skills:start -->';
 const MARKER_END = '<!-- preload:skills:end -->';
 const FRONT_MATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const SKILL_NAME = /^\s*[-*]\s+`?([A-Za-z0-9][A-Za-z0-9._-]*)`?\s*$/;
+const execFileAsync = promisify(execFile);
 
 export interface SkillsBody {
   body: string;
   stale: boolean;
 }
 
-interface FileCache {
-  text: string;
-  etag?: string;
-}
-
 interface BundleCache {
   body: string;
-  files: Record<string, FileCache>;
+  commit?: string;
   fetchedAt: number;
 }
 
@@ -62,9 +60,11 @@ const renderSection = (name: string, sourcePath: string, markdown: string): stri
     markdown,
   ).trim()}`;
 
+const quoteSshArgument = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
+
 export class SkillsBundleSource {
   private cache: BundleCache | null = null;
-  private inflight: Promise<void> | null = null;
+  private inflight: Promise<boolean> | null = null;
   private warnedMissingSource = false;
   private warnedMissingList = false;
 
@@ -73,38 +73,44 @@ export class SkillsBundleSource {
   }
 
   async getBody(): Promise<SkillsBody> {
-    if (this.config.ttlMs > 0 && this.cache && Date.now() - this.cache.fetchedAt < this.config.ttlMs) {
+    if (
+      this.config.ttlMs > 0 &&
+      this.cache &&
+      Date.now() - this.cache.fetchedAt < this.config.ttlMs
+    ) {
       return { body: this.cache.body, stale: false };
     }
-    const before = this.cache?.fetchedAt ?? 0;
-    await this.refresh();
+    const refreshed = await this.refresh();
     if (!this.cache) {
       return { body: '', stale: true };
     }
-    return { body: this.cache.body, stale: this.cache.fetchedAt === before };
+    return { body: this.cache.body, stale: !refreshed };
   }
 
   private describeSource(): string {
     if (this.config.localPath) {
       return `directory ${this.config.localPath}`;
     }
-    if (this.config.repo) {
-      return `github ${this.config.repo}@${this.config.ref}`;
+    if (this.config.gitRepo) {
+      return `git ${this.config.gitRepo}@${this.config.ref}`;
     }
-    return 'no source (SKILLS_BUNDLE_LOCAL_PATH / SKILLS_BUNDLE_REPO unset)';
+    return 'no source (SKILLS_BUNDLE_LOCAL_PATH / SKILLS_BUNDLE_GIT_REPO unset)';
   }
 
-  private refresh(): Promise<void> {
+  /** Single-flight refresh; the boolean tells callers whether it succeeded. */
+  private refresh(): Promise<boolean> {
     if (this.inflight) {
       return this.inflight;
     }
     this.inflight = this.fetchOnce()
+      .then(() => true)
       .catch((error: unknown) => {
         logger.warn(
           `Failed to refresh skill bodies from ${this.describeSource()}; keeping the cached copy: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
+        return false;
       })
       .finally(() => {
         this.inflight = null;
@@ -113,18 +119,18 @@ export class SkillsBundleSource {
   }
 
   private async fetchOnce(): Promise<void> {
-    if (!this.config.localPath && !this.config.repo) {
+    if (!this.config.localPath && !this.config.gitRepo) {
       if (!this.warnedMissingSource) {
         this.warnedMissingSource = true;
         logger.warn(
-          'Startup bundle has no skill bodies: set SKILLS_BUNDLE_LOCAL_PATH or SKILLS_BUNDLE_REPO.',
+          'Startup bundle has no skill bodies: set SKILLS_BUNDLE_LOCAL_PATH or SKILLS_BUNDLE_GIT_REPO.',
         );
       }
       return;
     }
 
-    const nextFiles: Record<string, FileCache> = { ...(this.cache?.files ?? {}) };
-    const preload = await this.readText(this.config.preloadPath, nextFiles);
+    const commit = this.config.localPath ? undefined : await this.syncGit();
+    const preload = await this.readText(this.config.preloadPath);
     if (!preload) {
       throw new Error(`missing ${this.config.preloadPath}`);
     }
@@ -136,14 +142,14 @@ export class SkillsBundleSource {
           `No skills found between the preload markers in ${this.config.preloadPath}; the startup bundle will carry the catalog only.`,
         );
       }
-      this.cache = { body: '', files: nextFiles, fetchedAt: Date.now() };
+      this.cache = { body: '', commit, fetchedAt: Date.now() };
       return;
     }
 
     const sections: string[] = [];
     for (const name of names) {
       const sourcePath = `${this.config.skillsRoot}/${name}/SKILL.md`;
-      const text = await this.readText(sourcePath, nextFiles);
+      const text = await this.readText(sourcePath);
       if (!text || !text.trim()) {
         logger.warn(`Startup bundle skipped skill '${name}': ${sourcePath} is missing or empty`);
         continue;
@@ -160,15 +166,63 @@ export class SkillsBundleSource {
             `以上 ${sections.length} 个开场技能已全部加载，直接遵循即可，不要再逐个调用技能工具。`,
           ].join('\n\n') + '\n';
 
-    this.cache = { body, files: nextFiles, fetchedAt: Date.now() };
+    this.cache = { body, commit, fetchedAt: Date.now() };
     this.persistDiskCache();
   }
 
-  /** Read one repository file, reusing its cached text on 304. */
-  private async readText(
-    relativePath: string,
-    nextFiles: Record<string, FileCache>,
-  ): Promise<string | null> {
+  /** Clone once, then check the remote branch on every uncached request. */
+  private async syncGit(): Promise<string> {
+    const remote = this.config.gitRepo;
+    if (!remote) {
+      throw new Error('git source is not configured');
+    }
+    const branchRef = `refs/heads/${this.config.ref}`;
+    await fs.promises.mkdir(path.dirname(this.config.gitCachePath), { recursive: true });
+
+    if (!fs.existsSync(path.join(this.config.gitCachePath, 'HEAD'))) {
+      await this.git([
+        'clone',
+        '--bare',
+        '--single-branch',
+        '--branch',
+        this.config.ref,
+        '--',
+        remote,
+        this.config.gitCachePath,
+      ]);
+    }
+
+    const remoteOutput = await this.git([
+      '--git-dir',
+      this.config.gitCachePath,
+      'ls-remote',
+      '--exit-code',
+      'origin',
+      branchRef,
+    ]);
+    const remoteCommit = remoteOutput.split(/\s+/, 1)[0];
+    if (!/^[0-9a-f]{40}$/i.test(remoteCommit)) {
+      throw new Error(`git ls-remote did not return a commit for ${this.config.ref}`);
+    }
+
+    const localCommit = (
+      await this.git(['--git-dir', this.config.gitCachePath, 'rev-parse', '--verify', branchRef])
+    ).trim();
+    if (localCommit !== remoteCommit) {
+      await this.git([
+        '--git-dir',
+        this.config.gitCachePath,
+        'fetch',
+        '--depth=1',
+        'origin',
+        `+${branchRef}:${branchRef}`,
+      ]);
+    }
+    return remoteCommit;
+  }
+
+  /** Read one file from a local directory or from the cached git commit. */
+  private async readText(relativePath: string): Promise<string | null> {
     if (this.config.localPath) {
       const absolute = path.join(this.config.localPath, relativePath);
       try {
@@ -181,42 +235,39 @@ export class SkillsBundleSource {
       }
     }
 
-    const cached = this.cache?.files[relativePath];
-    const encoded = relativePath
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    const url = `https://api.github.com/repos/${this.config.repo}/contents/${encoded}?ref=${encodeURIComponent(
-      this.config.ref,
-    )}`;
-    const headers: Record<string, string> = {
-      Accept: 'application/vnd.github.raw',
-      'User-Agent': 'mcphub-startup-catalog',
-    };
-    if (this.config.token) {
-      headers.Authorization = `Bearer ${this.config.token}`;
+    const revision = `refs/heads/${this.config.ref}:${relativePath}`;
+    try {
+      return await this.git(['--git-dir', this.config.gitCachePath, 'show', revision]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/does not exist|exists on disk, but not in|Not a valid object name/i.test(message)) {
+        return null;
+      }
+      throw error;
     }
-    if (cached?.etag) {
-      headers['If-None-Match'] = cached.etag;
-    }
+  }
 
-    const response = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(this.config.timeoutMs),
-    });
-    if (response.status === 304) {
-      return cached?.text ?? null;
+  private async git(args: string[]): Promise<string> {
+    const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+    if (this.config.gitSshKeyPath) {
+      env.GIT_SSH_COMMAND = `ssh -i ${quoteSshArgument(
+        this.config.gitSshKeyPath,
+      )} -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new`;
     }
-    if (response.status === 404) {
-      return null;
+    try {
+      const { stdout } = await execFileAsync('git', args, {
+        env,
+        timeout: this.config.timeoutMs,
+        maxBuffer: 4 * 1024 * 1024,
+      });
+      return stdout;
+    } catch (error) {
+      const remote = this.config.gitRepo;
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `git ${args[0]} failed: ${remote ? detail.split(remote).join('<remote>') : detail}`,
+      );
     }
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} from the GitHub contents API for ${relativePath}`);
-    }
-    const text = await response.text();
-    const etag = response.headers.get('etag') ?? undefined;
-    nextFiles[relativePath] = { text, etag };
-    return text;
   }
 
   private persistDiskCache(): void {
@@ -237,10 +288,10 @@ export class SkillsBundleSource {
   private loadDiskCache(): void {
     try {
       const parsed = JSON.parse(fs.readFileSync(this.config.cachePath, 'utf8')) as BundleCache;
-      if (parsed && typeof parsed.body === 'string' && parsed.files) {
+      if (parsed && typeof parsed.body === 'string') {
         this.cache = {
           body: parsed.body,
-          files: parsed.files,
+          commit: typeof parsed.commit === 'string' ? parsed.commit : undefined,
           fetchedAt: typeof parsed.fetchedAt === 'number' ? parsed.fetchedAt : 0,
         };
       }

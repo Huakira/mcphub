@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,10 +13,7 @@ import {
   SkillsBundleSource,
   stripFrontMatter,
 } from '../../src/services/startupCatalog/skillsBundle.js';
-import {
-  CatalogSummaries,
-  type LlmClient,
-} from '../../src/services/startupCatalog/summaries.js';
+import { CatalogSummaries, type LlmClient } from '../../src/services/startupCatalog/summaries.js';
 import {
   configureStartupBundle,
   getStartupBundle,
@@ -82,6 +80,7 @@ describe('SkillsBundleSource', () => {
       ref: 'main',
       preloadPath: 'skills/preload/SKILL.md',
       skillsRoot: 'skills',
+      gitCachePath: path.join(root, 'skills.git'),
       cachePath: path.join(root, 'cache.json'),
       ttlMs: 0,
       timeoutMs: 1000,
@@ -112,6 +111,7 @@ describe('SkillsBundleSource', () => {
       ref: 'main',
       preloadPath: 'skills/preload/SKILL.md',
       skillsRoot: 'skills',
+      gitCachePath: path.join(root, 'skills.git'),
       cachePath: path.join(root, 'cache.json'),
       ttlMs: 0,
       timeoutMs: 1000,
@@ -123,6 +123,58 @@ describe('SkillsBundleSource', () => {
     const second = await source.getBody();
     expect(second.body).toBe(first.body);
     expect(second.stale).toBe(true);
+  });
+
+  it('checks the remote git branch per request and falls back when it is offline', async () => {
+    const root = makeTempDir();
+    const remote = path.join(root, 'remote');
+    fs.mkdirSync(path.join(remote, 'skills', 'preload'), { recursive: true });
+    fs.mkdirSync(path.join(remote, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(
+      path.join(remote, 'skills', 'preload', 'SKILL.md'),
+      '<!-- preload:skills:start -->\n- `demo`\n<!-- preload:skills:end -->\n',
+    );
+    fs.writeFileSync(path.join(remote, 'skills', 'demo', 'SKILL.md'), '## version one\n');
+
+    const git = (...args: string[]) =>
+      execFileSync('git', args, {
+        cwd: remote,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: 'Test',
+          GIT_AUTHOR_EMAIL: 'test@example.com',
+          GIT_COMMITTER_NAME: 'Test',
+          GIT_COMMITTER_EMAIL: 'test@example.com',
+        },
+      });
+    git('init', '-b', 'main');
+    git('add', '.');
+    git('commit', '-m', 'version one');
+
+    const source = new SkillsBundleSource({
+      gitRepo: remote,
+      gitCachePath: path.join(root, 'cache.git'),
+      ref: 'main',
+      preloadPath: 'skills/preload/SKILL.md',
+      skillsRoot: 'skills',
+      cachePath: path.join(root, 'cache.json'),
+      ttlMs: 0,
+      timeoutMs: 5000,
+    });
+    expect((await source.getBody()).body).toContain('version one');
+
+    fs.writeFileSync(path.join(remote, 'skills', 'demo', 'SKILL.md'), '## version two\n');
+    git('add', '.');
+    git('commit', '-m', 'version two');
+    const updated = await source.getBody();
+    expect(updated.body).toContain('version two');
+    expect(updated.body).not.toContain('version one');
+    expect(updated.stale).toBe(false);
+
+    fs.renameSync(remote, `${remote}-offline`);
+    const offline = await source.getBody();
+    expect(offline.body).toBe(updated.body);
+    expect(offline.stale).toBe(true);
   });
 });
 
@@ -168,7 +220,10 @@ describe('server fingerprints', () => {
   it('changes when a description changes', () => {
     const changed = serverFingerprint(
       fingerprintPairs(
-        { ...server, tools: [{ ...server.tools[0], description: 'Search items (v2)' }, server.tools[1]] },
+        {
+          ...server,
+          tools: [{ ...server.tools[0], description: 'Search items (v2)' }, server.tools[1]],
+        },
         '-',
       ),
     );
@@ -266,7 +321,9 @@ describe('CatalogSummaries', () => {
       debounceMs: 0,
     });
     await service.init();
-    service.setSnapshot(snapshot([{ name: 'svc', tools: [{ name: 'svc-run', description: 'Run' }] }]));
+    service.setSnapshot(
+      snapshot([{ name: 'svc', tools: [{ name: 'svc-run', description: 'Run' }] }]),
+    );
     await service.flush();
     const row = service.getRows()[0];
     expect(row.summary).toBeUndefined();
@@ -292,7 +349,9 @@ describe('CatalogSummaries', () => {
       now: () => now,
     });
     await service.init();
-    service.setSnapshot(snapshot([{ name: 'svc', tools: [{ name: 'svc-run', description: 'Run' }] }]));
+    service.setSnapshot(
+      snapshot([{ name: 'svc', tools: [{ name: 'svc-run', description: 'Run' }] }]),
+    );
     await service.flush();
     expect(calls).toBe(1);
     await service.flush();
@@ -366,6 +425,7 @@ describe('startup bundle equality', () => {
         ref: 'main',
         preloadPath: 'skills/preload/SKILL.md',
         skillsRoot: 'skills',
+        gitCachePath: path.join(root, 'skills.git'),
         cachePath: path.join(root, 'cache.json'),
         ttlMs: 0,
         timeoutMs: 1000,

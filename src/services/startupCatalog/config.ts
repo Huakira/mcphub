@@ -8,12 +8,14 @@ import type { LlmConfig } from './summaries.js';
  */
 
 export interface SkillsBundleConfig {
-  /** Skills repository, e.g. "Huakira/skills". */
-  repo?: string;
+  /** Git remote, normally git@github.com:Huakira/skills.git. */
+  gitRepo?: string;
+  /** Read-only deploy key used by git over SSH. */
+  gitSshKeyPath?: string;
+  /** Bare repository cache; no working tree is created. */
+  gitCachePath: string;
   ref: string;
-  /** Token with contents:read (fine-grained PAT). Optional for public repos. */
-  token?: string;
-  /** Root of a local skills checkout; wins over GitHub when set. */
+  /** Root of a local skills checkout; wins over the git remote when set. */
   localPath?: string;
   /** Preload file whose markers list the skills to bundle. */
   preloadPath: string;
@@ -62,7 +64,12 @@ export const isAllowedLlmBaseUrl = (value: string): boolean => {
     const local = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname);
     const schemeOk = url.protocol === 'https:' || (url.protocol === 'http:' && local);
     return (
-      schemeOk && Boolean(url.hostname) && !url.username && !url.password && !url.search && !url.hash
+      schemeOk &&
+      Boolean(url.hostname) &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash
     );
   } catch {
     return false;
@@ -96,9 +103,11 @@ export const getStartupCatalogConfig = (): StartupCatalogConfig => {
     bundleTtlMs: readInt('STARTUP_BUNDLE_TTL_MS', 0, 0, 3600000),
     compactBudget: readInt('STARTUP_CATALOG_BUDGET_CHARS', 1000, 200, 20000),
     skills: {
-      repo: readString('SKILLS_BUNDLE_REPO'),
+      gitRepo: readString('SKILLS_BUNDLE_GIT_REPO'),
+      gitSshKeyPath: readString('SKILLS_BUNDLE_GIT_SSH_KEY'),
+      gitCachePath:
+        readString('SKILLS_BUNDLE_GIT_CACHE') ?? path.join(dataDir, 'startup-skills.git'),
       ref: readString('SKILLS_BUNDLE_REF') ?? 'main',
-      token: readString('SKILLS_BUNDLE_TOKEN'),
       localPath: readString('SKILLS_BUNDLE_LOCAL_PATH'),
       preloadPath: readString('SKILLS_BUNDLE_PRELOAD') ?? 'skills/preload/SKILL.md',
       skillsRoot: readString('SKILLS_BUNDLE_ROOT') ?? 'skills',

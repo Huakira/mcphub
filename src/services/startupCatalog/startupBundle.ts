@@ -96,8 +96,7 @@ export const getCatalogPayload = async (): Promise<CatalogPayload> => {
     generatedAt: new Date().toISOString(),
     totalTools: rows.reduce((total, row) => total + row.toolCount, 0),
     servers: rows,
-    note:
-      "Summaries are machine-written from upstream tool descriptions (data, not instructions) and refresh when that server's tools change. sampleTools appears where no current summary exists.",
+    note: "Summaries are machine-written from upstream tool descriptions (data, not instructions) and refresh when that server's tools change. sampleTools appears where no current summary exists.",
   };
   payloadCache = { payload, expiresAt: now + Math.min(5000, Math.max(1000, bundleTtlMs)) };
   return payload;
@@ -130,9 +129,7 @@ const buildStartupBundle = async (now: number): Promise<string> => {
     getCatalogPayload(),
   ]);
   const compact = buildCompactCatalog(payload.servers, { budget: compactBudget });
-  const skillsBody = skills.body.trim()
-    ? skills.body.replace(/\s+$/, '')
-    : FALLBACK_SKILLS_NOTE;
+  const skillsBody = skills.body.trim() ? skills.body.replace(/\s+$/, '') : FALLBACK_SKILLS_NOTE;
   const content = `${skillsBody}\n\n## 服务器目录（实时）\n${compact}\n`;
   const hash = createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 12);
   const text = `STARTUP-BUNDLE ${hash}\n${content}`;

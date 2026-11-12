@@ -18,7 +18,7 @@ export const isStartupCatalogEnabled = (): boolean => {
   return Boolean(
     (env.CATALOG_READ_TOKEN ?? '').trim() ||
       (env.SKILLS_BUNDLE_LOCAL_PATH ?? '').trim() ||
-      (env.SKILLS_BUNDLE_REPO ?? '').trim(),
+      (env.SKILLS_BUNDLE_GIT_REPO ?? '').trim(),
   );
 };
 

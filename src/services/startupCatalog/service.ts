@@ -63,9 +63,7 @@ export const initStartupCatalog = async (): Promise<void> => {
   });
 
   await refreshStartupCatalog();
-  logger.log(
-    `Startup catalog ready (summaries ${llm ? 'on' : 'off'}, store ${config.storePath})`,
-  );
+  logger.log(`Startup catalog ready (summaries ${llm ? 'on' : 'off'}, store ${config.storePath})`);
 };
 
 /** Re-read the served tool snapshot and let the summary service reconcile it. */
