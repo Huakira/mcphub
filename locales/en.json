@@ -1171,7 +1171,10 @@
       "confirmClear": "Remove all policies? Access will fall back to existing permissions.",
       "deleteRule": "Delete rule {{number}}",
       "retry": "Retry"
-    }
+    },
+    "extraToolHint": "Extra tool instructions",
+    "extraToolHintDescription": "Append the same instructions to smart routing search_tools and call_tool descriptions only.",
+    "extraToolHintPlaceholder": "Optional instructions for finding and calling tools"
   },
   "mcpb": {
     "upload": "Upload",

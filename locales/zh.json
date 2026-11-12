@@ -1174,7 +1174,10 @@
       "confirmClear": "删除全部策略？访问将恢复为现有权限控制。",
       "deleteRule": "删除规则 {{number}}",
       "retry": "重试"
-    }
+    },
+    "extraToolHint": "自定义工具提示",
+    "extraToolHintDescription": "仅在智能路由的 search_tools 和 call_tool 描述末尾追加相同提示，不修改下游工具描述。",
+    "extraToolHintPlaceholder": "选填：用于指导工具搜索和调用的提示"
   },
   "mcpb": {
     "upload": "上传",

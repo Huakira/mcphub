@@ -221,6 +221,7 @@ export const buildSmartRoutingMetaTools = (
   serversList: string,
   progressiveDisclosure: boolean,
   fullSchemaTopN?: number,
+  extraHint?: string,
 ): any[] => {
   const tools: any[] = [];
 
@@ -373,6 +374,14 @@ Available servers: ${serversList}`,
     );
   }
 
+  if (extraHint) {
+    for (const tool of tools) {
+      if (tool.name === 'search_tools' || tool.name === 'call_tool') {
+        tool.description = `${tool.description}\n\n${extraHint}`;
+      }
+    }
+  }
+
   return tools;
 };
 
@@ -455,6 +464,7 @@ export const getSmartRoutingMetaToolDefinitions = async (
     serversList,
     progressiveDisclosure,
     smartRoutingConfig.fullSchemaTopN,
+    smartRoutingConfig.extraToolHint,
   );
 };
 
@@ -479,6 +489,7 @@ export const getSmartRoutingTools = async (
       serversList,
       progressiveDisclosure,
       smartRoutingConfig.fullSchemaTopN,
+      smartRoutingConfig.extraToolHint,
     ),
   };
 };

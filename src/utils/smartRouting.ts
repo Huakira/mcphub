@@ -68,6 +68,8 @@ export interface SmartRoutingConfig {
    * Default: 'names' for backward compatibility.
    */
   serverDescriptionMode?: 'names' | 'full';
+  /** Optional text appended to search_tools and call_tool descriptions. */
+  extraToolHint?: string;
   /**
    * Maximum number of tokens allowed when truncating tool descriptions before generating
    * embeddings. Overrides the per-model default from getModelDefaultTokenLimit().
@@ -364,6 +366,14 @@ export async function getSmartRoutingConfig(): Promise<SmartRoutingConfig> {
           .toLowerCase();
         return normalized === 'full' ? 'full' : 'names';
       },
+    ),
+
+    extraToolHint: cfg(
+      'extraToolHint',
+      { SMART_ROUTING_EXTRA_TOOL_HINT: process.env.SMART_ROUTING_EXTRA_TOOL_HINT },
+      smartRoutingSettings.extraToolHint,
+      '',
+      (value: unknown) => String(value || ''),
     ),
 
     // Maximum tokens for text truncation before generating embeddings.

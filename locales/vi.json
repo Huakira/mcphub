@@ -1171,7 +1171,10 @@
       "confirmClear": "Xóa mọi chính sách? Quyền hiện có sẽ được áp dụng.",
       "deleteRule": "Xóa quy tắc {{number}}",
       "retry": "Thử lại"
-    }
+    },
+    "extraToolHint": "Extra tool instructions",
+    "extraToolHintDescription": "Append the same instructions to smart routing search_tools and call_tool descriptions only.",
+    "extraToolHintPlaceholder": "Optional instructions for finding and calling tools"
   },
   "mcpb": {
     "upload": "Tải lên",

@@ -622,6 +622,7 @@ const SettingsPage: React.FC = () => {
     // Empty string = default (query heuristic / every hit in full)
     similarityThreshold: string;
     fullSchemaTopN: string;
+    extraToolHint: string;
   }>({
     dbUrl: '',
     basePacingDelayMs: '',
@@ -643,6 +644,7 @@ const SettingsPage: React.FC = () => {
     embeddingDocumentPrefix: '',
     similarityThreshold: '',
     fullSchemaTopN: '',
+    extraToolHint: '',
   });
 
   const [tempToolResultCompressionConfig, setTempToolResultCompressionConfig] = useState<{
@@ -856,6 +858,7 @@ const SettingsPage: React.FC = () => {
           smartRoutingConfig.fullSchemaTopN != null
             ? String(smartRoutingConfig.fullSchemaTopN)
             : '',
+        extraToolHint: smartRoutingConfig.extraToolHint || '',
       });
     }
   }, [smartRoutingConfig]);
@@ -1095,7 +1098,8 @@ const SettingsPage: React.FC = () => {
       | 'embeddingQueryPrefix'
       | 'embeddingDocumentPrefix'
       | 'similarityThreshold'
-      | 'fullSchemaTopN',
+      | 'fullSchemaTopN'
+      | 'extraToolHint',
     value: string,
   ) => {
     setTempSmartRoutingConfig({
@@ -1505,6 +1509,9 @@ const SettingsPage: React.FC = () => {
       if (parsedTopN !== undefined) {
         updates.fullSchemaTopN = parsedTopN;
       }
+      if (tempSmartRoutingConfig.extraToolHint !== (smartRoutingConfig.extraToolHint || '')) {
+        updates.extraToolHint = tempSmartRoutingConfig.extraToolHint;
+      }
 
       // Save all changes in a single batch update
       await updateSmartRoutingConfigBatch(updates);
@@ -1616,6 +1623,9 @@ const SettingsPage: React.FC = () => {
     );
     if (parsedFullSchemaTopN !== undefined) {
       updates.fullSchemaTopN = parsedFullSchemaTopN;
+    }
+    if (tempSmartRoutingConfig.extraToolHint !== (smartRoutingConfig.extraToolHint || '')) {
+      updates.extraToolHint = tempSmartRoutingConfig.extraToolHint;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -3207,6 +3217,23 @@ const SettingsPage: React.FC = () => {
                     {t('settings.toolDefinitionFieldsDescription')}
                   </p>
                   {renderEnvOverrideWarning('toolDefinitionFields')}
+                </div>
+                <div>
+                  <h3 className="font-medium" style={{ color: 'var(--hub-ink)', fontSize: 13 }}>
+                    {t('settings.extraToolHint')}
+                  </h3>
+                  <textarea
+                    className="form-input mt-1 w-full"
+                    rows={3}
+                    aria-label={t('settings.extraToolHint')}
+                    value={tempSmartRoutingConfig.extraToolHint}
+                    onChange={(e) => handleSmartRoutingConfigChange('extraToolHint', e.target.value)}
+                    placeholder={t('settings.extraToolHintPlaceholder')}
+                    disabled={loading || !smartRoutingConfig.enabled}
+                  />
+                  <p style={{ fontSize: 12, color: 'var(--hub-ink-3)' }}>
+                    {t('settings.extraToolHintDescription')}
+                  </p>
                 </div>
 
                 <div

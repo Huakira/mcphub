@@ -50,6 +50,7 @@ interface SmartRoutingConfig {
   azureOpenaiEmbeddingDeployment?: string;
   azureOpenaiEmbeddingModel?: string;
   progressiveDisclosure: boolean;
+  extraToolHint?: string;
   embeddingMaxTokens?: number;
   embeddingQueryPrefix?: string;
   embeddingDocumentPrefix?: string;
@@ -393,6 +394,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     azureOpenaiEmbeddingDeployment: '',
     azureOpenaiEmbeddingModel: '',
     progressiveDisclosure: false,
+    extraToolHint: '',
     embeddingMaxTokens: undefined,
     embeddingQueryPrefix: '',
     embeddingDocumentPrefix: '',
@@ -505,6 +507,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           azureOpenaiEmbeddingModel:
             data.data.systemConfig.smartRouting.azureOpenaiEmbeddingModel || '',
           progressiveDisclosure: data.data.systemConfig.smartRouting.progressiveDisclosure ?? false,
+          extraToolHint: data.data.systemConfig.smartRouting.extraToolHint || '',
           embeddingMaxTokens: data.data.systemConfig.smartRouting.embeddingMaxTokens,
           embeddingQueryPrefix: data.data.systemConfig.smartRouting.embeddingQueryPrefix || '',
           embeddingDocumentPrefix:

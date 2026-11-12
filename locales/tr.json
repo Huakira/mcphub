@@ -1169,7 +1169,10 @@
       "confirmClear": "Tüm politikalar silinsin mi? Mevcut izinler geçerli olacaktır.",
       "deleteRule": "{{number}} numaralı kuralı sil",
       "retry": "Yeniden dene"
-    }
+    },
+    "extraToolHint": "Extra tool instructions",
+    "extraToolHintDescription": "Append the same instructions to smart routing search_tools and call_tool descriptions only.",
+    "extraToolHintPlaceholder": "Optional instructions for finding and calling tools"
   },
   "mcpb": {
     "upload": "Yükle",

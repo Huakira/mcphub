@@ -1170,7 +1170,10 @@
       "confirmClear": "Supprimer toutes les politiques ? Les permissions existantes s’appliqueront.",
       "deleteRule": "Supprimer la règle {{number}}",
       "retry": "Réessayer"
-    }
+    },
+    "extraToolHint": "Extra tool instructions",
+    "extraToolHintDescription": "Append the same instructions to smart routing search_tools and call_tool descriptions only.",
+    "extraToolHintPlaceholder": "Optional instructions for finding and calling tools"
   },
   "mcpb": {
     "upload": "Télécharger",
