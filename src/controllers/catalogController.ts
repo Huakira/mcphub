@@ -20,9 +20,10 @@ export const getCatalog = async (_req: Request, res: Response, next: NextFunctio
   }
 };
 
-export const getStartup = async (_req: Request, res: Response, next: NextFunction) => {
+export const getStartup = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const bundle = await getStartupBundle();
+    const agents = /^(1|true|yes)$/i.test(String(req.query.agents ?? ''));
+    const bundle = await getStartupBundle({ agents });
     res.type('text/plain; charset=utf-8').set('Cache-Control', 'no-store').send(bundle);
   } catch (error) {
     logger.warn(
