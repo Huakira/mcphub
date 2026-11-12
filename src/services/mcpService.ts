@@ -103,6 +103,15 @@ import { validateMaxBufferSize } from '../utils/stdioOptions.js';
 import { validateServerName } from '../utils/serverNameValidation.js';
 import { getGroup } from './sseService.js';
 import { mcpEventBus } from './mcpEventBus.js';
+import {
+  STARTUP_BUNDLE_TOOL_NAME,
+  buildStartupBundleToolResult,
+  getStartupBundleToolDefinition,
+  isStartupCatalogEnabled,
+} from './startupCatalog/builtinTool.js';
+import { registerCatalogSnapshotProvider } from './startupCatalog/startupBundle.js';
+import { initStartupCatalog } from './startupCatalog/service.js';
+import type { CatalogSnapshot } from './startupCatalog/types.js';
 import { getServerConfigInGroup, normalizeGroupServers } from './groupService.js';
 import {
   removeServerToolEmbeddings,
@@ -390,6 +399,36 @@ const wrapWithProxychains = (
   };
 };
 
+// What this hub currently serves, for the startup catalog. Descriptions and
+// names come from the same sources as listGroupTools, so a fingerprint change
+// always means the text agents see changed.
+const buildCatalogSnapshot = async (): Promise<CatalogSnapshot> => {
+  const servers: CatalogSnapshot['servers'] = [];
+  for (const serverInfo of getVisibleServerInfos()) {
+    if (!serverInfo.tools || serverInfo.tools.length === 0) {
+      continue;
+    }
+    const serverConfig = await getServerDao().findById(serverInfo.name);
+    const runtimeNames = serverInfo.tools.map((tool) => tool.name);
+    servers.push({
+      name: serverInfo.name,
+      tools: serverInfo.tools.map((tool) => {
+        const toolConfig = findToolConfig(
+          serverConfig?.tools,
+          serverInfo.name,
+          tool.name,
+          runtimeNames,
+        );
+        return {
+          name: tool.name,
+          description: resolveDescriptionOverride(tool.description, toolConfig),
+        };
+      }),
+    });
+  }
+  return { separator: getNameSeparator(), servers };
+};
+
 export const initUpstreamServers = async (): Promise<void> => {
   // Initialize OAuth clients for servers with dynamic registration
   await initializeAllOAuthClients();
@@ -399,6 +438,11 @@ export const initUpstreamServers = async (): Promise<void> => {
 
   // Initialize smart routing service with references to mcpService functions
   initSmartRoutingService(getVisibleServerInfos, filterToolsByConfig, filterToolsByGroup);
+
+  // Startup catalog (/catalog, /startup, startup-bundle): seeds summaries by
+  // fingerprint, then follows tool list changes from the event bus.
+  registerCatalogSnapshotProvider(buildCatalogSnapshot);
+  await initStartupCatalog();
 };
 
 type McpServerDescriptor = {
@@ -4302,6 +4346,16 @@ const listGroupTools = async (
     }
   }
 
+  // MCPHub's own startup bundle joins the listed surface when the catalog is
+  // provisioned for this instance; a real upstream tool of the same name still
+  // wins on direct routes at call time.
+  if (
+    isStartupCatalogEnabled() &&
+    !allTools.some((tool) => tool.name === STARTUP_BUNDLE_TOOL_NAME)
+  ) {
+    allTools.push(getStartupBundleToolDefinition());
+  }
+
   if ([...serverConfigsByName.values()].some((config) => config.preserveToolNames)) {
     assertValidGroupToolNames(allTools);
   }
@@ -4387,9 +4441,21 @@ const handleListToolsRequestImpl = async (_: any, extra: any) => {
       // Pins are an optimisation: failing to resolve them must not cost the meta-tools
       logger.warn(`Failed to list pinned tools for ${group}; returning meta-tools only`, error);
     }
-    return pinnedTools.length > 0
-      ? { tools: [...smartRoutingTools.tools, ...pinnedTools] }
-      : smartRoutingTools;
+    const listed =
+      pinnedTools.length > 0
+        ? [...smartRoutingTools.tools, ...pinnedTools]
+        : [...smartRoutingTools.tools];
+    const appendStartupTool =
+      isStartupCatalogEnabled() &&
+      !listed.some((tool) => tool.name === STARTUP_BUNDLE_TOOL_NAME);
+    if (appendStartupTool) {
+      listed.push(getStartupBundleToolDefinition());
+    }
+    if (pinnedTools.length === 0 && !appendStartupTool) {
+      // Leave the untrimmed result untouched: callers may rely on its identity.
+      return smartRoutingTools;
+    }
+    return { tools: listed };
   }
 
   const { filteredServerInfos, serverConfigsByName } = await getFilteredServerInfosForGroup(group);
@@ -4527,6 +4593,19 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
         (tool) => normalizeToolNameForServer(lookupRoute, tool.name) === request.params.name,
       );
 
+    // MCPHub's own startup bundle is served on every route, unless a direct
+    // route's upstream server really exports a tool with the same name.
+    const upstreamOwnsStartupName =
+      !!lookupRoute &&
+      !isSmartRoutingGroup(group) &&
+      !(await findRouteGroup(lookupRoute)) &&
+      getVisibleServerByName(lookupRoute)?.tools.some(
+        (tool) => normalizeToolNameForServer(lookupRoute, tool.name) === STARTUP_BUNDLE_TOOL_NAME,
+      );
+    if (!upstreamOwnsStartupName && request.params.name === STARTUP_BUNDLE_TOOL_NAME) {
+      return await buildStartupBundleToolResult();
+    }
+
     // Special handling for smart routing tools
     if (!upstreamOwnsMetaName && request.params.name === 'search_tools') {
       const { query, limit = 10 } = request.params.arguments || {};
@@ -4544,6 +4623,11 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
       const { toolName } = request.params.arguments || {};
       if (!toolName) {
         throw new Error('toolName parameter is required');
+      }
+
+      // The startup bundle is a hub-level read, not an upstream call.
+      if (toolName === STARTUP_BUNDLE_TOOL_NAME) {
+        return await buildStartupBundleToolResult();
       }
 
       const { arguments: toolArgs } = request.params.arguments || {};
@@ -6112,6 +6196,22 @@ const withToolPolicy = async (
 ) => {
   const group = getMcpRequestGroup(extra);
   const policy = await getToolPolicy(group);
+  // The startup bundle belongs to the hub, not to an upstream server, so no
+  // server policy applies unless some upstream really exports that name.
+  const startupTarget =
+    request?.params?.name === STARTUP_BUNDLE_TOOL_NAME ||
+    (request?.params?.name === 'call_tool' &&
+      request?.params?.arguments?.toolName === STARTUP_BUNDLE_TOOL_NAME);
+  if (startupTarget) {
+    const ownedByUpstream = getVisibleServerInfos().some((info) =>
+      info.tools.some(
+        (tool) => normalizeToolNameForServer(info.name, tool.name) === STARTUP_BUNDLE_TOOL_NAME,
+      ),
+    );
+    if (!ownedByUpstream) {
+      return handler(request, extra);
+    }
+  }
   if (!policy.active) return handler(request, extra);
   const { filteredServerInfos: candidates, serverConfigsByName } =
     await getFilteredServerInfosForGroup(getGroupLookupName(group));

@@ -130,6 +130,8 @@ import {
 } from '../controllers/builtinResourceController.js';
 import { uploadMcpbFile, uploadMiddleware } from '../controllers/mcpbController.js';
 import { healthCheck, livenessCheck, readinessCheck } from '../controllers/healthController.js';
+import { catalogTokenAuth } from '../middlewares/catalogToken.js';
+import { getCatalog, getStartup } from '../controllers/catalogController.js';
 import { replicaConfiguration } from '../middlewares/replicaConfig.js';
 import { replicaStatus } from '../services/replicaService.js';
 import { isReplicaMode } from '../utils/replicaMode.js';
@@ -230,6 +232,12 @@ export const initRoutes = async (app: express.Application): Promise<void> => {
   app.get('/livez', livenessCheck);
   app.get('/readyz', readinessCheck);
   app.get('/metrics', metrics);
+
+  // Read-only startup catalog for local clients and remote agents. Both
+  // endpoints require CATALOG_READ_TOKEN (401 otherwise) and are mounted under
+  // BASE_PATH like the other public configuration routes.
+  app.get(`${config.basePath}/catalog`, catalogTokenAuth, getCatalog);
+  app.get(`${config.basePath}/startup`, catalogTokenAuth, getStartup);
 
   // Hosted data-plane webhook ingress. HMAC-authenticated by INTERNAL_API_SECRET.
   app.post('/internal/v1/events', hostedInternalEventRateLimiter, receiveHostedInternalEvent);
