@@ -26,10 +26,16 @@ export const getStartupBundleToolDefinition = (): Tool => ({
   name: STARTUP_BUNDLE_TOOL_NAME,
   title: 'Startup bundle',
   description:
-    'Return the session startup bundle: the preloaded skill bodies followed by a live one-line-per-server capability catalog. Call it once at session start, and again after resuming, clearing or compacting a session.',
+    'Return the session startup bundle: the preloaded skill bodies followed by a live one-line-per-server capability catalog. Call it once at session start, and again after resuming, clearing or compacting a session. Pass agents: true only on a client that cannot read the repository AGENTS.md itself, such as a hosted chat without a filesystem.',
   inputSchema: {
     type: 'object',
-    properties: {},
+    properties: {
+      agents: {
+        type: 'boolean',
+        description:
+          'Prepend the repository-root AGENTS.md. Use it only when the client has no local copy of that file.',
+      },
+    },
     additionalProperties: false,
   },
   annotations: {
@@ -38,9 +44,11 @@ export const getStartupBundleToolDefinition = (): Tool => ({
   },
 });
 
-export const buildStartupBundleToolResult = async (): Promise<{
+export const buildStartupBundleToolResult = async (
+  args?: Record<string, unknown>,
+): Promise<{
   content: Array<{ type: 'text'; text: string }>;
 }> => {
-  const text = await getStartupBundle();
+  const text = await getStartupBundle({ agents: args?.agents === true });
   return { content: [{ type: 'text', text }] };
 };

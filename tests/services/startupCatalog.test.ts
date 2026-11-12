@@ -466,4 +466,45 @@ describe('startup bundle equality', () => {
     expect(httpBody).toContain('## 服务器目录（实时）');
     expect(toolBody.content[0].text).toBe(httpBody);
   });
+
+  it('only prepends AGENTS.md when the caller opts in', async () => {
+    const root = makeTempDir();
+    fs.mkdirSync(path.join(root, 'skills', 'preload'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'AGENTS.md'), '# 全局指令\n\n删除文件先进回收站。\n');
+    fs.writeFileSync(
+      path.join(root, 'skills', 'preload', 'SKILL.md'),
+      '<!-- preload:skills:start -->\n- `demo`\n<!-- preload:skills:end -->\n',
+    );
+    fs.writeFileSync(path.join(root, 'skills', 'demo', 'SKILL.md'), '## demo\n\n做事。\n');
+
+    setSkillsBundleSource(
+      new SkillsBundleSource({
+        localPath: root,
+        ref: 'main',
+        preloadPath: 'skills/preload/SKILL.md',
+        skillsRoot: 'skills',
+        gitCachePath: path.join(root, 'skills.git'),
+        cachePath: path.join(root, 'cache.json'),
+        ttlMs: 0,
+        timeoutMs: 1000,
+      }),
+    );
+    setCatalogSummaries(null);
+    configureStartupBundle({ bundleTtlMs: 0, compactBudget: 400 });
+    resetStartupBundleCache();
+
+    const plain = await getStartupBundle();
+    expect(plain).not.toContain('全局指令（AGENTS.md');
+
+    const withAgents = await getStartupBundle({ agents: true });
+    expect(withAgents).toContain('# 全局指令（AGENTS.md，仓库根目录）');
+    expect(withAgents).toContain('删除文件先进回收站');
+    expect(withAgents.indexOf('全局指令（AGENTS.md')).toBeLessThan(
+      withAgents.indexOf('# 开场技能'),
+    );
+
+    const toolBody = await buildStartupBundleToolResult({ agents: true });
+    expect(toolBody.content[0].text).toBe(withAgents);
+  });
 });

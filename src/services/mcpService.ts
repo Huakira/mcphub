@@ -2258,9 +2258,14 @@ const setupServerKeepAlive = (serverInfo: ServerInfo, serverConfig: ServerConfig
 export const initializeClientsFromSettings = async (
   isInit: boolean,
   serverName?: string,
-  options?: { reportEmbeddingProgress?: boolean; declarations?: ServerConfigWithName[]; preserveExisting?: boolean },
+  options?: {
+    reportEmbeddingProgress?: boolean;
+    declarations?: ServerConfigWithName[];
+    preserveExisting?: boolean;
+  },
 ): Promise<ServerInfo[]> => {
-  const allServers: ServerConfigWithName[] = options?.declarations ?? await getServerDao().findAll();
+  const allServers: ServerConfigWithName[] =
+    options?.declarations ?? (await getServerDao().findAll());
   const existingServerInfos = serverInfos;
   const nextServerInfos: ServerInfo[] = [];
   const generation = ++initGeneration;
@@ -2834,7 +2839,9 @@ export const initializeClientsFromSettings = async (
   return serverInfos;
 };
 
-export const reconcileReplicaServers = async (declarations: ServerConfigWithName[]): Promise<void> => {
+export const reconcileReplicaServers = async (
+  declarations: ServerConfigWithName[],
+): Promise<void> => {
   const expanded = new Map<string, ServerConfig>();
   for (const declaration of declarations) {
     const resolved = await expandServerConfig(declaration);
@@ -2842,9 +2849,11 @@ export const reconcileReplicaServers = async (declarations: ServerConfigWithName
     validateMaxBufferSize(resolved.options?.maxBufferSize);
     expanded.set(declaration.name, resolved);
   }
-  const changed = serverInfos.filter((info) =>
-    !isDeepStrictEqual(info.config, expanded.get(info.name)) ||
-    (info.enabled !== false) !== (expanded.get(info.name)?.enabled !== false));
+  const changed = serverInfos.filter(
+    (info) =>
+      !isDeepStrictEqual(info.config, expanded.get(info.name)) ||
+      (info.enabled !== false) !== (expanded.get(info.name)?.enabled !== false),
+  );
   for (const info of changed) closeServer(info.name);
   serverInfos = serverInfos.filter((info) => !changed.includes(info));
   await initializeClientsFromSettings(false, undefined, { declarations, preserveExisting: true });
@@ -4446,8 +4455,7 @@ const handleListToolsRequestImpl = async (_: any, extra: any) => {
         ? [...smartRoutingTools.tools, ...pinnedTools]
         : [...smartRoutingTools.tools];
     const appendStartupTool =
-      isStartupCatalogEnabled() &&
-      !listed.some((tool) => tool.name === STARTUP_BUNDLE_TOOL_NAME);
+      isStartupCatalogEnabled() && !listed.some((tool) => tool.name === STARTUP_BUNDLE_TOOL_NAME);
     if (appendStartupTool) {
       listed.push(getStartupBundleToolDefinition());
     }
@@ -4603,7 +4611,7 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
         (tool) => normalizeToolNameForServer(lookupRoute, tool.name) === STARTUP_BUNDLE_TOOL_NAME,
       );
     if (!upstreamOwnsStartupName && request.params.name === STARTUP_BUNDLE_TOOL_NAME) {
-      return await buildStartupBundleToolResult();
+      return await buildStartupBundleToolResult(request.params.arguments);
     }
 
     // Special handling for smart routing tools
@@ -4627,7 +4635,7 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
 
       // The startup bundle is a hub-level read, not an upstream call.
       if (toolName === STARTUP_BUNDLE_TOOL_NAME) {
-        return await buildStartupBundleToolResult();
+        return await buildStartupBundleToolResult(request.params.arguments);
       }
 
       const { arguments: toolArgs } = request.params.arguments || {};
@@ -5623,7 +5631,11 @@ const personalClientMethods = new Set([
   'listResourceTemplates',
 ]);
 
-const protectReplicaOAuthClient = <T extends object>(client: T, name: string, definition: ServerConfig): T => {
+const protectReplicaOAuthClient = <T extends object>(
+  client: T,
+  name: string,
+  definition: ServerConfig,
+): T => {
   if (!isReplicaMode() || !definition.url || !definition.oauth) return client;
   return new Proxy(client, {
     get(target, property) {
@@ -6327,12 +6339,22 @@ const withReplicaServerScope = async <T>(action: () => Promise<T>): Promise<T> =
   if (!isReplicaMode()) return action();
   const context = UserContextService.getInstance();
   const current = context.getCurrentUser() as (IUser & RequestPrincipal) | null;
-  const externalPrincipal = current?.credentialEligible === false ||
+  const externalPrincipal =
+    current?.credentialEligible === false ||
     RequestContextService.getInstance().getHostedAuthContext();
-  const user = current ? externalPrincipal ? current : await getUserDao().findByUsername(current.username) : null;
+  const user = current
+    ? externalPrincipal
+      ? current
+      : await getUserDao().findByUsername(current.username)
+    : null;
   if (current && !user) throw new Error('User no longer exists');
-  const definitions = getDataService().filterData(await getServerDao().findAll(), user ?? undefined);
-  const byName = new Map<string, ServerConfigWithName>(definitions.map((server) => [server.name, server]));
+  const definitions = getDataService().filterData(
+    await getServerDao().findAll(),
+    user ?? undefined,
+  );
+  const byName = new Map<string, ServerConfigWithName>(
+    definitions.map((server) => [server.name, server]),
+  );
   const visible = (principalServerScope.getStore() ?? serverInfos).flatMap((info) => {
     const live = byName.get(info.name);
     if (!live || live.enabled === false) return [];
@@ -6364,7 +6386,9 @@ const withReplicaServerScope = async <T>(action: () => Promise<T>): Promise<T> =
   return context.runWithContext(() => principalServerScope.run(visible, action), user ?? null);
 };
 export const handleCallToolRequest = (request: any, extra: any) =>
-  observeToolCall(() => withReplicaServerScope(() => withToolPolicy(callToolWithPrincipal, request, extra, true)));
+  observeToolCall(() =>
+    withReplicaServerScope(() => withToolPolicy(callToolWithPrincipal, request, extra, true)),
+  );
 export const handleGetPromptRequest = withPrincipalServers(
   withModernLists(handleGetPromptRequestImpl, ['prompts']),
   'prompt',
