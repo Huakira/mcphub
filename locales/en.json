@@ -1174,7 +1174,10 @@
     },
     "extraToolHint": "Extra tool instructions",
     "extraToolHintDescription": "Append the same instructions to smart routing search_tools and call_tool descriptions only.",
-    "extraToolHintPlaceholder": "Optional instructions for finding and calling tools"
+    "extraToolHintPlaceholder": "Optional instructions for finding and calling tools",
+    "aggregateGroups": "Aggregate groups",
+    "aggregateGroupsDescription": "Comma-separated group names exposed together at /mcp/$smart/$groups. Existing /mcp/$smart/{group} addresses stay unchanged.",
+    "aggregateGroupsPlaceholder": "webfetch, websearch_extended, notes, operations"
   },
   "mcpb": {
     "upload": "Upload",

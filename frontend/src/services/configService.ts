@@ -37,6 +37,7 @@ export interface SystemConfig {
     azureOpenaiEmbeddingDeployment?: string;
     embeddingMaxTokens?: number;
     extraToolHint?: string;
+    aggregateGroups?: string[];
   };
   toolResultCompression?: {
     enabled?: boolean;

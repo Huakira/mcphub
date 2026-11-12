@@ -71,6 +71,11 @@ export interface SmartRoutingConfig {
   /** Optional text appended to search_tools and call_tool descriptions. */
   extraToolHint?: string;
   /**
+   * Group names whose smart-routing meta-tools are exposed together on
+   * `/mcp/$smart/$groups`. Empty disables that route.
+   */
+  aggregateGroups?: string[];
+  /**
    * Maximum number of tokens allowed when truncating tool descriptions before generating
    * embeddings. Overrides the per-model default from getModelDefaultTokenLimit().
    *
@@ -374,6 +379,24 @@ export async function getSmartRoutingConfig(): Promise<SmartRoutingConfig> {
       smartRoutingSettings.extraToolHint,
       '',
       (value: unknown) => String(value || ''),
+    ),
+
+    aggregateGroups: cfg<string[]>(
+      'aggregateGroups',
+      { SMART_ROUTING_AGGREGATE_GROUPS: process.env.SMART_ROUTING_AGGREGATE_GROUPS },
+      smartRoutingSettings.aggregateGroups,
+      [],
+      (value: unknown) => {
+        const names = Array.isArray(value)
+          ? value
+          : typeof value === 'string'
+            ? value.split(',')
+            : null;
+        if (!names || names.some((name) => typeof name !== 'string')) {
+          throw new Error('aggregateGroups must be a list of group names');
+        }
+        return [...new Set(names.map((name) => name.trim()).filter((name) => name.length > 0))];
+      },
     ),
 
     // Maximum tokens for text truncation before generating embeddings.

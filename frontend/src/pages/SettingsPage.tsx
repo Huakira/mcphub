@@ -623,6 +623,7 @@ const SettingsPage: React.FC = () => {
     similarityThreshold: string;
     fullSchemaTopN: string;
     extraToolHint: string;
+    aggregateGroups: string;
   }>({
     dbUrl: '',
     basePacingDelayMs: '',
@@ -645,6 +646,7 @@ const SettingsPage: React.FC = () => {
     similarityThreshold: '',
     fullSchemaTopN: '',
     extraToolHint: '',
+    aggregateGroups: '',
   });
 
   const [tempToolResultCompressionConfig, setTempToolResultCompressionConfig] = useState<{
@@ -859,6 +861,7 @@ const SettingsPage: React.FC = () => {
             ? String(smartRoutingConfig.fullSchemaTopN)
             : '',
         extraToolHint: smartRoutingConfig.extraToolHint || '',
+        aggregateGroups: (smartRoutingConfig.aggregateGroups || []).join(', '),
       });
     }
   }, [smartRoutingConfig]);
@@ -1099,7 +1102,8 @@ const SettingsPage: React.FC = () => {
       | 'embeddingDocumentPrefix'
       | 'similarityThreshold'
       | 'fullSchemaTopN'
-      | 'extraToolHint',
+      | 'extraToolHint'
+      | 'aggregateGroups',
     value: string,
   ) => {
     setTempSmartRoutingConfig({
@@ -1512,6 +1516,15 @@ const SettingsPage: React.FC = () => {
       if (tempSmartRoutingConfig.extraToolHint !== (smartRoutingConfig.extraToolHint || '')) {
         updates.extraToolHint = tempSmartRoutingConfig.extraToolHint;
       }
+      if (
+        tempSmartRoutingConfig.aggregateGroups !==
+        (smartRoutingConfig.aggregateGroups || []).join(', ')
+      ) {
+        updates.aggregateGroups = tempSmartRoutingConfig.aggregateGroups
+          .split(',')
+          .map((name) => name.trim())
+          .filter((name) => name.length > 0);
+      }
 
       // Save all changes in a single batch update
       await updateSmartRoutingConfigBatch(updates);
@@ -1626,6 +1639,15 @@ const SettingsPage: React.FC = () => {
     }
     if (tempSmartRoutingConfig.extraToolHint !== (smartRoutingConfig.extraToolHint || '')) {
       updates.extraToolHint = tempSmartRoutingConfig.extraToolHint;
+    }
+    if (
+      tempSmartRoutingConfig.aggregateGroups !==
+      (smartRoutingConfig.aggregateGroups || []).join(', ')
+    ) {
+      updates.aggregateGroups = tempSmartRoutingConfig.aggregateGroups
+        .split(',')
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0);
     }
 
     if (Object.keys(updates).length > 0) {
@@ -3218,6 +3240,7 @@ const SettingsPage: React.FC = () => {
                   </p>
                   {renderEnvOverrideWarning('toolDefinitionFields')}
                 </div>
+
                 <div>
                   <h3 className="font-medium" style={{ color: 'var(--hub-ink)', fontSize: 13 }}>
                     {t('settings.extraToolHint')}
@@ -3235,7 +3258,25 @@ const SettingsPage: React.FC = () => {
                     {t('settings.extraToolHintDescription')}
                   </p>
                 </div>
-
+                <div>
+                  <h3 className="font-medium" style={{ color: 'var(--hub-ink)', fontSize: 13 }}>
+                    {t('settings.aggregateGroups')}
+                  </h3>
+                  <input
+                    type="text"
+                    className="form-input mt-1 w-full"
+                    aria-label={t('settings.aggregateGroups')}
+                    value={tempSmartRoutingConfig.aggregateGroups}
+                    onChange={(e) =>
+                      handleSmartRoutingConfigChange('aggregateGroups', e.target.value)
+                    }
+                    placeholder={t('settings.aggregateGroupsPlaceholder')}
+                    disabled={loading || !smartRoutingConfig.enabled}
+                  />
+                  <p style={{ fontSize: 12, color: 'var(--hub-ink-3)' }}>
+                    {t('settings.aggregateGroupsDescription')}
+                  </p>
+                </div>
                 <div
                   className="flex items-center justify-between"
                   style={{

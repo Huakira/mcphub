@@ -132,6 +132,11 @@ import {
   isSmartRoutingGroup,
 } from './smartRoutingService.js';
 import { convertParametersToTypes } from '../utils/parameterConversion.js';
+import {
+  isAggregateSmartRoutingGroup,
+  parseAggregateMetaTool,
+  rewriteAggregateMetaDescription,
+} from '../utils/aggregateSmartRouting.js';
 import { getActivityLoggingService } from './activityLoggingService.js';
 import { maybeCompressToolResult } from './toolResultCompressionService.js';
 import {
@@ -3974,13 +3979,56 @@ const normalizeToolNameForServer = (serverName: string, toolName: string): strin
 };
 
 const getGroupLookupName = (group: string | undefined): string | undefined => {
-  if (group === '$smart') {
+  if (group === '$smart' || isAggregateSmartRoutingGroup(group)) {
     return undefined;
   }
   if (group?.startsWith('$smart/')) {
     return group.substring(7) || undefined;
   }
   return group;
+};
+
+const withGroupContext = async <T>(group: string, action: () => Promise<T>): Promise<T> => {
+  const context = RequestContextService.getInstance();
+  const previous = context.getGroupContext();
+  context.setGroupContext(group);
+  try {
+    return await action();
+  } finally {
+    context.setGroupContext(previous);
+  }
+};
+
+const listAccessibleAggregateGroups = async (): Promise<string[]> => {
+  // Local patch: aggregate every existing group instead of a configured name list,
+  // so renaming or adding groups needs no smartRouting.aggregateGroups upkeep.
+  const groups = await getGroupDao().findAll();
+  const user = UserContextService.getInstance().getCurrentUser() ?? undefined;
+  const accessible: string[] = [];
+  for (const group of groups) {
+    if (canAccessGroupRoute(group, user)) {
+      accessible.push(group.name);
+    }
+  }
+  return accessible;
+};
+
+const listAggregateSmartRoutingTools = async (): Promise<Tool[]> => {
+  const tools: Tool[] = [];
+  for (const name of await listAccessibleAggregateGroups()) {
+    const listed = await getSmartRoutingTools(`$smart/${name}`);
+    for (const tool of listed.tools) {
+      if (!['search_tools', 'describe_tool', 'call_tool'].includes(tool.name)) {
+        continue;
+      }
+      tools.push({
+        ...tool,
+        name: `${name}_${tool.name}`,
+        description: rewriteAggregateMetaDescription(tool.description || '', name),
+      });
+    }
+  }
+  return tools;
 };
 
 const getExposedServerName = (serverName: string, serverConfig?: IGroupServerConfig): string => {
@@ -4373,6 +4421,9 @@ const handleListToolsRequestImpl = async (_: any, extra: any) => {
 
   // Special handling for $smart group to return smart routing tools
   // Support both $smart and $smart/{group} patterns
+  if (isAggregateSmartRoutingGroup(group)) {
+    return { tools: await listAggregateSmartRoutingTools() };
+  }
   if (isSmartRoutingGroup(group)) {
     const smartRoutingTools = await getSmartRoutingTools(group);
     let pinnedTools: Tool[] = [];
@@ -6123,8 +6174,32 @@ const withToolPolicy = async (
   request: any,
   extra: any,
   invocation: boolean,
-) => {
+): Promise<any> => {
   const group = getMcpRequestGroup(extra);
+  if (isAggregateSmartRoutingGroup(group)) {
+    if (!invocation) return handler(request, extra);
+    const parsed = parseAggregateMetaTool(
+      request.params?.name,
+      await listAccessibleAggregateGroups(),
+    );
+    if (!parsed) {
+      return {
+        content: [{ type: 'text', text: `Error: Tool not available: ${request.params?.name}` }],
+        isError: true,
+      };
+    }
+    return withGroupContext(`$smart/${parsed.group}`, () =>
+      withToolPolicy(
+        handler,
+        {
+          ...request,
+          params: { ...request.params, name: parsed.action },
+        },
+        extra,
+        invocation,
+      ),
+    );
+  }
   const policy = await getToolPolicy(group);
   if (!policy.active) return handler(request, extra);
   const { filteredServerInfos: candidates, serverConfigsByName } =
@@ -6233,7 +6308,7 @@ const withToolPolicy = async (
   return principalServerScope.run(eligible, () => handler(request, extra));
 };
 
-export const handleListToolsRequest = (request: any, extra: any) =>
+export const handleListToolsRequest = (request: any, extra: any): Promise<any> =>
   withToolPolicy(listToolsWithPrincipal, request, extra, false);
 
 // Polling refreshes connections; authorization always reads the current shared records.
@@ -6277,7 +6352,7 @@ const withReplicaServerScope = async <T>(action: () => Promise<T>): Promise<T> =
   });
   return context.runWithContext(() => principalServerScope.run(visible, action), user ?? null);
 };
-export const handleCallToolRequest = (request: any, extra: any) =>
+export const handleCallToolRequest = (request: any, extra: any): Promise<any> =>
   observeToolCall(() => withReplicaServerScope(() => withToolPolicy(callToolWithPrincipal, request, extra, true)));
 export const handleGetPromptRequest = withPrincipalServers(
   withModernLists(handleGetPromptRequestImpl, ['prompts']),

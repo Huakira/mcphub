@@ -1177,7 +1177,10 @@
     },
     "extraToolHint": "自定义工具提示",
     "extraToolHintDescription": "仅在智能路由的 search_tools 和 call_tool 描述末尾追加相同提示，不修改下游工具描述。",
-    "extraToolHintPlaceholder": "选填：用于指导工具搜索和调用的提示"
+    "extraToolHintPlaceholder": "选填：用于指导工具搜索和调用的提示",
+    "aggregateGroups": "聚合分组",
+    "aggregateGroupsDescription": "用逗号分隔的分组名，一起暴露在 /mcp/$smart/$groups。已有的 /mcp/$smart/{组名} 地址不变。",
+    "aggregateGroupsPlaceholder": "webfetch, websearch_extended, notes, operations"
   },
   "mcpb": {
     "upload": "上传",
