@@ -131,6 +131,7 @@ import {
   handleDescribeToolRequest,
   isSmartRoutingGroup,
 } from './smartRoutingService.js';
+import { convertParametersToTypes } from '../utils/parameterConversion.js';
 import { getActivityLoggingService } from './activityLoggingService.js';
 import { maybeCompressToolResult } from './toolResultCompressionService.js';
 import {
@@ -4618,7 +4619,10 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
         const openApiClient = targetServerInfo.openApiClient;
 
         // Use toolArgs if it has properties, otherwise fallback to request.params.arguments
-        const finalArgs = toolArgs && typeof toolArgs === 'object' ? toolArgs : {};
+        const finalArgs = convertParametersToTypes(
+          toolArgs && typeof toolArgs === 'object' ? toolArgs : {},
+          tool.inputSchema || {},
+        );
 
         logger.log('Invoking OpenAPI tool', {
           toolName: targetToolName,
@@ -4751,7 +4755,10 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
       }
 
       // Use toolArgs if it has properties, otherwise fallback to request.params.arguments
-      const finalArgs = toolArgs && typeof toolArgs === 'object' ? toolArgs : {};
+      const finalArgs = convertParametersToTypes(
+        toolArgs && typeof toolArgs === 'object' ? toolArgs : {},
+        tool.inputSchema || {},
+      );
 
       logger.log('Invoking tool', {
         toolName: targetToolName,
@@ -4894,7 +4901,10 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
         }
       }
 
-      const finalArgs = request.params.arguments || {};
+      const finalArgs = convertParametersToTypes(
+        request.params.arguments || {},
+        tool.inputSchema || {},
+      );
       const stateId = serverInfo.config?.openapi?.cookieSession
         ? getToolStateId(serverInfo, cookieSessionId)
         : cookieSessionId;
@@ -4983,9 +4993,13 @@ const handleCallToolRequestImpl = async (request: any, extra: any) => {
 
     const cleanToolName = normalizeToolNameForServer(serverInfo.name, tool.name);
     await reserveHostedIfNeeded(serverInfo.name, cleanToolName);
+    const finalArgs = convertParametersToTypes(
+      request.params.arguments || {},
+      tool.inputSchema || {},
+    );
     const result = await callToolWithReconnect(
       serverInfo,
-      { ...request.params, name: cleanToolName },
+      { ...request.params, name: cleanToolName, arguments: finalArgs },
       serverInfo.options || {},
       1,
       isolatedCtx,

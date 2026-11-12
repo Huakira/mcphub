@@ -81,9 +81,17 @@ export function convertParametersToTypes(
           break;
 
         case 'boolean':
-          // Convert string to boolean
+          // Convert recognized strings only. Leave malformed values untouched so a
+          // typo is not silently coerced to false.
           if (typeof value === 'string') {
-            convertedParams[key] = value.toLowerCase() === 'true' || value === '1';
+            const normalizedValue = value.trim().toLowerCase();
+            if (normalizedValue === '' || normalizedValue === 'false' || normalizedValue === '0') {
+              convertedParams[key] = false;
+            } else if (normalizedValue === 'true' || normalizedValue === '1') {
+              convertedParams[key] = true;
+            } else {
+              convertedParams[key] = value;
+            }
           } else {
             convertedParams[key] = value;
           }
