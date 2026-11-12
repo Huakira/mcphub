@@ -125,12 +125,18 @@ export const getStartupBundle = async (): Promise<string> => {
 
 const buildStartupBundle = async (now: number): Promise<string> => {
   const [skills, payload] = await Promise.all([
-    skillsSource ? skillsSource.getBody() : Promise.resolve({ body: '', stale: true }),
+    skillsSource ? skillsSource.getBody() : Promise.resolve({ body: '', agents: '', stale: true }),
     getCatalogPayload(),
   ]);
   const compact = buildCompactCatalog(payload.servers, { budget: compactBudget });
   const skillsBody = skills.body.trim() ? skills.body.replace(/\s+$/, '') : FALLBACK_SKILLS_NOTE;
-  const content = `${skillsBody}\n\n## 服务器目录（实时）\n${compact}\n`;
+  const agentsBody = skills.agents.trim();
+  const parts = [
+    agentsBody ? `# 全局指令（AGENTS.md，仓库根目录）\n\n${agentsBody}` : '',
+    skillsBody,
+    `## 服务器目录（实时）\n${compact}`,
+  ].filter((part) => part.length > 0);
+  const content = `${parts.join('\n\n')}\n`;
   const hash = createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 12);
   const text = `STARTUP-BUNDLE ${hash}\n${content}`;
   if (bundleTtlMs > 0) {

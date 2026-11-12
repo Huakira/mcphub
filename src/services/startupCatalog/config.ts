@@ -19,6 +19,8 @@ export interface SkillsBundleConfig {
   localPath?: string;
   /** Preload file whose markers list the skills to bundle. */
   preloadPath: string;
+  /** Repo-root instruction file rendered ahead of the skills. */
+  agentsPath?: string;
   /** Directory holding <name>/SKILL.md. */
   skillsRoot: string;
   cachePath: string;
@@ -110,6 +112,7 @@ export const getStartupCatalogConfig = (): StartupCatalogConfig => {
       ref: readString('SKILLS_BUNDLE_REF') ?? 'main',
       localPath: readString('SKILLS_BUNDLE_LOCAL_PATH'),
       preloadPath: readString('SKILLS_BUNDLE_PRELOAD') ?? 'skills/preload/SKILL.md',
+      agentsPath: readString('SKILLS_BUNDLE_AGENTS') ?? 'AGENTS.md',
       skillsRoot: readString('SKILLS_BUNDLE_ROOT') ?? 'skills',
       cachePath: readString('SKILLS_BUNDLE_CACHE') ?? path.join(dataDir, 'startup-skills.json'),
       ttlMs: readInt('SKILLS_BUNDLE_TTL_MS', 0, 0, 86400000),

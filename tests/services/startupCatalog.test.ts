@@ -95,6 +95,31 @@ describe('SkillsBundleSource', () => {
     expect(body).not.toContain('description: d');
   });
 
+  it('carries the repo-root AGENTS.md ahead of the skills', async () => {
+    const root = makeTempDir();
+    fs.mkdirSync(path.join(root, 'skills', 'preload'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'AGENTS.md'), '# 全局指令\n\n删除文件先进回收站。\n');
+    fs.writeFileSync(
+      path.join(root, 'skills', 'preload', 'SKILL.md'),
+      '<!-- preload:skills:start -->\n- `demo`\n<!-- preload:skills:end -->\n',
+    );
+    fs.writeFileSync(path.join(root, 'skills', 'demo', 'SKILL.md'), '## 用法\n');
+
+    const source = new SkillsBundleSource({
+      localPath: root,
+      ref: 'main',
+      preloadPath: 'skills/preload/SKILL.md',
+      skillsRoot: 'skills',
+      gitCachePath: path.join(root, 'skills.git'),
+      cachePath: path.join(root, 'cache.json'),
+      ttlMs: 0,
+      timeoutMs: 1000,
+    });
+    const result = await source.getBody();
+    expect(result.agents).toContain('删除文件先进回收站');
+  });
+
   it('keeps the last copy when the source disappears', async () => {
     const root = makeTempDir();
     const skillsRoot = path.join(root, 'skills');
